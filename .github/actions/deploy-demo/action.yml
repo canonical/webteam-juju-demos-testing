@@ -9,10 +9,6 @@ inputs:
     required: false
     description: A path to a charm file.
 
-defaults:
-  run:
-    shell: bash
-
 runs:
   using: composite
   steps:
@@ -25,6 +21,7 @@ runs:
     - name: Get charm name
       if: ${{ inputs.charm-path == '' }}
       id: charm
+      shell: bash
       run: |
         names="${{ steps.pack.outputs.charms }}"
         files=($names)
