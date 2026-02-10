@@ -29,6 +29,6 @@ jobs:
       - uses: actions/upload-artifact@v6
         if: ${{ steps.charm.outputs.name != '' }}
         with:
-          name: "${{ github.repository }}-${{ github.event.number }}"
+          name: "${{ github.event.repository.name }}-${{ github.event.number }}"
           path: ${{ steps.charm.outputs.name }}
           retention-days: 1
