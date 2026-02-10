@@ -27,7 +27,7 @@ runs:
         files=($names)
         for file in "${files[@]}"; do
           if [[ $file == *amd64* ]]; then
-            echo "${{ inputs.charm-root }}/$file" >> $GITHUB_OUTPUT
+            echo "name=${{ inputs.charm-root }}/$file" >> $GITHUB_OUTPUT
             exit 0
           fi
         done
