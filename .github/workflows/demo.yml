@@ -8,25 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Package charm with Charmcraft
-        id: pack
-        uses: canonical/craft-actions/charmcraft/pack@main
-        with:
-          path: "./charm"
-      - name: Get charm name
-        id: charm
-        run: |
-          names="${{ steps.pack.outputs.charms }}"
-          files=($names)
-          for file in "${files[@]}"; do
-            if [[ $file == *amd64* ]]; then
-              echo "name=charm/$file" >> $GITHUB_OUTPUT
-              exit 0
-            fi
-          done
-          # If an amd64 build wasn't found then fail the run.
-          exit 1
       - name: Deploy demo
         uses: ./.github/actions/deploy-demo
         with:
-          charm-path: ${{ steps.charm.outputs.name }}
+          charm-root: ./charm
