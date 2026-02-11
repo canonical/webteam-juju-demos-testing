@@ -19,5 +19,5 @@ runs:
         charm-root: ${{ inputs.charm-root }}
         charm-path: ${{ inputs.charm-path }}
     - name: Clean up Demo
-      if: ${{ github.event_name == 'pull_request' && github.event.action == 'closed' }}
+      if: github.event_name == 'pull_request' && github.event.action == 'closed'
       uses: ./.github/actions/cleanup-demo

@@ -11,11 +11,11 @@ concurrency:
 
 jobs:
   demo:
-    name: Publish Demo
+    name: Demo Service
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Deploy demo
+      - name: Manage Demo
         uses: ./.github/actions/demo-service
         with:
           charm-root: ./charm
