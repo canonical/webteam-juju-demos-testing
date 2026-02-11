@@ -13,9 +13,9 @@ runs:
   using: composite
   steps:
     - uses: actions/github-script@v7
+      id: enabled
       with:
         github-token: ${{ secrets.GITHUB_TOKEN }}
-        id: enabled
         script: |
           const { data: comments } = await github.rest.issues.listComments({
             owner: context.repo.owner,
@@ -27,13 +27,13 @@ runs:
           })
           return !demoServiceComment || demoServiceComment.body.includes('Status: enabled');
     - name: Publish Demo
-      if: steps.enabled.outputs.result && github.event_name == 'pull_request' && github.event.pull_request.merged != true && (github.event.action == 'opened' || github.event.action == 'reopened' || github.event.action == 'synchronize')
+      if: steps.enabled.outputs.result == 'true' && github.event_name == 'pull_request' && github.event.pull_request.merged != true && (github.event.action == 'opened' || github.event.action == 'reopened' || github.event.action == 'synchronize')
       uses: ./.github/actions/deploy-demo
       with:
         charm-root: ${{ inputs.charm-root }}
         charm-path: ${{ inputs.charm-path }}
     - name: Clean Up Demo
-      if: steps.enabled.outputs.result && github.event_name == 'pull_request' && github.event.action == 'closed'
+      if: steps.enabled.outputs.result == 'true' && github.event_name == 'pull_request' && github.event.action == 'closed'
       uses: ./.github/actions/cleanup-demo
     - name: Handle Commands
       if: github.event_name == 'issue_comment' && github.event.issue.pull_request && github.event.action == 'created'
