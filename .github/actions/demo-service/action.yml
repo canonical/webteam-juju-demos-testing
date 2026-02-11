@@ -37,6 +37,7 @@ runs:
       with:
         charm-root: ${{ inputs.charm-root }}
         charm-path: ${{ inputs.charm-path }}
+        demo-id: ${{ inputs.demo-id }}
     - name: Clean Up Demo
       if: steps.enabled.outputs.result == 'true' && github.event_name == 'pull_request' && github.event.action == 'closed'
       uses: ./.github/actions/cleanup-demo
