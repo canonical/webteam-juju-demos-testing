@@ -1,0 +1,33 @@
+name: Canonical Demo Service
+description: Deploy a charm to the Canonical web team demo service.
+inputs:
+  charm-root:
+    required: false
+    description: A path to the directory containing the charm.
+    default: ./
+  charm-path:
+    required: false
+    description: A path to a charm file.
+
+runs:
+  using: composite
+  steps:
+  deploy:
+    if: github.event_name == 'pull_request' && (github.event.action == 'opened' || github.event.action == 'reopened' || github.event.action == 'synchronize')
+    name: Publish Demo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy demo
+        uses: ./.github/actions/deploy-demo
+        with:
+          charm-root: ${{ inputs.charm-root }}
+          charm-path: ${{ inputs.charm-path }}
+  cleanup:
+    if: ${{ github.event_name == 'pull_request' && github.event.action == 'closed' }}
+    name: Remove Demo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clean up demo
+        uses: ./.github/actions/cleanup-demo

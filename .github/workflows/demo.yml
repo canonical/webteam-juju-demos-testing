@@ -3,6 +3,12 @@ on:
   pull_request:
 permissions:
   pull-requests: write
+
+# Ensure only one demo runs at a time.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   demo:
     name: Publish Demo
@@ -10,6 +16,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Deploy demo
-        uses: ./.github/actions/deploy-demo
+        uses: ./.github/actions/demo-service
         with:
           charm-root: ./charm
