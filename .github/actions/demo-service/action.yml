@@ -12,22 +12,12 @@ inputs:
 runs:
   using: composite
   steps:
-  deploy:
-    if: github.event_name == 'pull_request' && (github.event.action == 'opened' || github.event.action == 'reopened' || github.event.action == 'synchronize')
-    name: Publish Demo
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Deploy demo
-        uses: ./.github/actions/deploy-demo
-        with:
-          charm-root: ${{ inputs.charm-root }}
-          charm-path: ${{ inputs.charm-path }}
-  cleanup:
-    if: ${{ github.event_name == 'pull_request' && github.event.action == 'closed' }}
-    name: Remove Demo
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Clean up demo
-        uses: ./.github/actions/cleanup-demo
+    - name: Publish Demo
+      if: github.event_name == 'pull_request' && (github.event.action == 'opened' || github.event.action == 'reopened' || github.event.action == 'synchronize')
+      uses: ./.github/actions/deploy-demo
+      with:
+        charm-root: ${{ inputs.charm-root }}
+        charm-path: ${{ inputs.charm-path }}
+    - name: Clean up Demo
+      if: ${{ github.event_name == 'pull_request' && github.event.action == 'closed' }}
+      uses: ./.github/actions/cleanup-demo
