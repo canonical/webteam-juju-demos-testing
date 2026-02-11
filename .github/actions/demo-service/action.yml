@@ -12,6 +12,11 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: debug
+      shell: bash
+      run: |
+        // event_name: ${{ github.event_name }}
+        // action: ${{ github.event.action }}
     - name: Publish Demo
       if: github.event_name == 'pull_request' && (github.event.action == 'opened' || github.event.action == 'reopened' || github.event.action == 'synchronize')
       uses: ./.github/actions/deploy-demo
