@@ -2,8 +2,7 @@ name: Demo Cleanup
 on:
   pull_request:
     types: [closed]
-permissions:
-  pull-requests: read-all
+permissions: read-all
 jobs:
   cleanup:
     name: Remove Demo
