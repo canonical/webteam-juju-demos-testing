@@ -1,5 +1,7 @@
 name: Demo
 on:
+  issue_comment:
+    types: [created]
   pull_request:
     types:
       - closed

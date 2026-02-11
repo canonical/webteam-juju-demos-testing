@@ -1,0 +1,45 @@
+name: Demo Comment
+description: Create a comment on a PR for the demo service.
+inputs:
+  id:
+    required: true
+    description: A path to the directory containing the charm.
+  charm-path:
+    required: false
+    description: A path to a charm file.
+
+runs:
+  using: composite
+  steps:
+    - name: Get demo ID
+      id: unique-id
+      shell: bash
+      run: |
+        echo "id=${{ github.event.repository.name }}-${{ github.event.number }}" >> $GITHUB_OUTPUT
+    - uses: actions/github-script@v7
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          const { data: comments } = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+          })
+          const demoServiceComment = comments.find(comment => {
+            return comment.user.type === 'Bot' && comment.body.includes('<!-- demo_service -->')
+          })
+          if (demoServiceComment) {
+            return;
+          }
+          // TODO: the URL needs to be updated to point at the real demo service.
+          const output = `<!-- demo_service -->### [<img src='https://assets.ubuntu.com/v1/6baef514-ubuntu-circle-of-friends-large.svg' height=32 width=32> Demo</img>](https://${{ steps.unique-id.outputs.id }}.example.com)
+
+          Status: enabled
+
+          This demo can be disabled be leaving a comment on this PR with the command \`/stop-demo\` and re-enabled with \`/start-demo\``;
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: output
+          });
