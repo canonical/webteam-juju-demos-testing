@@ -21,9 +21,20 @@ runs:
     - name: Setup rockcraft
       shell: bash
       run: sudo snap install rockcraft --classic
+    
+    # Cache rock build
+    - name: Cache rock
+      id: cache-rock
+      uses: actions/cache@v4
+      with:
+        path: "*.rock"
+        key: rock-${{ hashFiles('rockcraft.yaml', 'app.py', 'requirements.txt') }}
+    
     - name: Pack rock
+      if: steps.cache-rock.outputs.cache-hit != 'true'
       shell: bash
       run: rockcraft pack
+    
     - name: Set image URL
       id: set_image_url
       shell: bash
@@ -38,11 +49,21 @@ runs:
       run: |
         ROCK_FILE=$(ls *.rock)
         skopeo --insecure-policy copy oci-archive:$ROCK_FILE docker://${{ steps.set_image_url.outputs.image_url }} --dest-creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}"
+    
     - name: Setup charmcraft
       shell: bash
       run: sudo snap install charmcraft --classic --channel=latest/stable
+    
+    # Cache charm build
+    - name: Cache charm
+      id: cache-charm
+      uses: actions/cache@v4
+      with:
+        path: "${{ inputs.charm-root }}/*.charm"
+        key: charm-${{ hashFiles(format('{0}/**', inputs.charm-root)) }}
+    
     - name: Package charm with Charmcraft
-      if: ${{ inputs.charm-path == '' }}
+      if: ${{ inputs.charm-path == '' && steps.cache-charm.outputs.cache-hit != 'true' }}
       id: pack
       shell: bash
       run: |
@@ -50,12 +71,23 @@ runs:
         charmcraft pack -v
         CHARM_FILE=$(ls *.charm)
         echo "charm_file=${CHARM_FILE}" >> $GITHUB_OUTPUT
+    
+    - name: Get charm name from cache
+      if: ${{ inputs.charm-path == '' && steps.cache-charm.outputs.cache-hit == 'true' }}
+      id: pack-cached
+      shell: bash
+      run: |
+        cd ${{ inputs.charm-root }}
+        CHARM_FILE=$(ls *.charm)
+        echo "charm_file=${CHARM_FILE}" >> $GITHUB_OUTPUT
+    
     - name: Get charm name
       if: ${{ inputs.charm-path == '' }}
       id: charm
       shell: bash
       run: |
-        echo "name=${{ inputs.charm-root }}/${{ steps.pack.outputs.charm_file }}" >> $GITHUB_OUTPUT
+        CHARM_FILE="${{ steps.pack.outputs.charm_file || steps.pack-cached.outputs.charm_file }}"
+        echo "name=${{ inputs.charm-root }}/${CHARM_FILE}" >> $GITHUB_OUTPUT
     - uses: actions/upload-artifact@v6
       if: ${{ inputs.charm-path != '' || steps.charm.outputs.name != '' }}
       with:
@@ -75,6 +107,9 @@ runs:
         juju login jaas.ps7.canonical.com:443/k8s-jaas-ps7-jimm-jimm -c jaas-ps7
     - name: Deploy charm
       shell: bash
+      env:
+        JUJU_CLIENT_ID: ${{ secrets.DEMOS_JUJU_CLIENT_ID }}
+        JUJU_CLIENT_SECRET: ${{ secrets.DEMOS_JUJU_CLIENT_SECRET }}
       run: |
         CHARM_FILE="${{ inputs.charm-path || steps.charm.outputs.name }}"
         juju deploy "$CHARM_FILE" ${{ inputs.demo-id }} \
