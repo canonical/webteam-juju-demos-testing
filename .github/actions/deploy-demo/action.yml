@@ -27,7 +27,9 @@ runs:
     - name: Set image URL
       id: set_image_url
       shell: bash
-      run: echo "image_url=ghcr.io/${{ github.repository }}:${{ inputs.demo-id }}" >> $GITHUB_OUTPUT
+      run: |
+        REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+        echo "image_url=ghcr.io/${REPO_LOWER}:${{ inputs.demo-id }}" >> $GITHUB_OUTPUT
     - name: Log in to GHCR
       shell: bash
       run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
