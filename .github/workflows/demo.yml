@@ -18,15 +18,190 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  demo:
-    name: Demo Service
+  setup:
+    name: Setup Demo
+    runs-on: ubuntu-latest
+    outputs:
+      demo-id: ${{ steps.demo-id.outputs.id }}
+      enabled: ${{ steps.enabled.outputs.result }}
+      should-deploy: ${{ steps.check.outputs.should-deploy }}
+      should-cleanup: ${{ steps.check.outputs.should-cleanup }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Get demo ID
+        id: demo-id
+        run: |
+          echo "id=${{ github.event.repository.name }}-pr${{ github.event.pull_request.number || github.event.issue.number }}" >> $GITHUB_OUTPUT
+      
+      - name: Check if demo is enabled
+        id: enabled
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            })
+            const demoServiceComment = comments.find(comment => {
+              return comment.user.type === 'Bot' && comment.body.includes('<!-- demo_service -->')
+            })
+            return !demoServiceComment || demoServiceComment.body.includes('Status: enabled');
+      
+      - name: Determine action
+        id: check
+        run: |
+          if [[ "${{ steps.enabled.outputs.result }}" == "true" ]] && \
+             [[ "${{ github.event_name }}" == "pull_request" ]] && \
+             [[ "${{ github.event.pull_request.merged }}" != "true" ]] && \
+             [[ "${{ github.event.action }}" =~ ^(opened|reopened|synchronize)$ ]]; then
+            echo "should-deploy=true" >> $GITHUB_OUTPUT
+          else
+            echo "should-deploy=false" >> $GITHUB_OUTPUT
+          fi
+          
+          if [[ "${{ steps.enabled.outputs.result }}" == "true" ]] && \
+             [[ "${{ github.event_name }}" == "pull_request" ]] && \
+             [[ "${{ github.event.action }}" == "closed" ]]; then
+            echo "should-cleanup=true" >> $GITHUB_OUTPUT
+          else
+            echo "should-cleanup=false" >> $GITHUB_OUTPUT
+          fi
+
+  build-rock:
+    name: Build Rock
+    needs: setup
+    if: needs.setup.outputs.should-deploy == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Manage Demo
-        uses: ./.github/actions/demo-service
+      
+      - name: Setup LXD
+        uses: canonical/setup-lxd@main
+      
+      - name: Setup rockcraft
+        run: sudo snap install rockcraft --classic
+      
+      - name: Cache rock
+        id: cache-rock
+        uses: actions/cache@v4
         with:
-          charm-root: ./charm
+          path: "*.rock"
+          key: rock-${{ hashFiles('rockcraft.yaml', 'app.py', 'requirements.txt') }}
+      
+      - name: Pack rock
+        if: steps.cache-rock.outputs.cache-hit != 'true'
+        run: rockcraft pack
+      
+      - name: Upload rock artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: rock-${{ needs.setup.outputs.demo-id }}
+          path: "*.rock"
+          retention-days: 1
+
+  build-charm:
+    name: Build Charm
+    needs: setup
+    if: needs.setup.outputs.should-deploy == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup LXD
+        uses: canonical/setup-lxd@main
+      
+      - name: Setup charmcraft
+        run: sudo snap install charmcraft --classic --channel=latest/stable
+      
+      - name: Cache charm
+        id: cache-charm
+        uses: actions/cache@v4
+        with:
+          path: "charm/*.charm"
+          key: charm-${{ hashFiles('charm/**') }}
+      
+      - name: Pack charm
+        if: steps.cache-charm.outputs.cache-hit != 'true'
+        run: |
+          cd charm
+          charmcraft pack -v
+      
+      - name: Upload charm artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: charm-${{ needs.setup.outputs.demo-id }}
+          path: "charm/*.charm"
+          retention-days: 1
+
+  deploy:
+    name: Deploy to Juju
+    needs: [setup, build-rock, build-charm]
+    if: needs.setup.outputs.should-deploy == 'true'
+    runs-on: ubuntu-latest
+    env:
+      DEMOS_JUJU_CLIENT_ID: ${{ secrets.DEMOS_JUJU_CLIENT_ID }}
+      DEMOS_JUJU_CLIENT_SECRET: ${{ secrets.DEMOS_JUJU_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download rock
+        uses: actions/download-artifact@v6
+        with:
+          name: rock-${{ needs.setup.outputs.demo-id }}
+      
+      - name: Download charm
+        uses: actions/download-artifact@v6
+        with:
+          name: charm-${{ needs.setup.outputs.demo-id }}
+      
+      - name: Set image URL
+        id: image-url
+        run: |
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "url=ghcr.io/${REPO_LOWER}:${{ needs.setup.outputs.demo-id }}" >> $GITHUB_OUTPUT
+      
+      - name: Login to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+      
+      - name: Push rock to GHCR
+        run: |
+          ROCK_FILE=$(ls *.rock)
+          skopeo --insecure-policy copy oci-archive:$ROCK_FILE docker://${{ steps.image-url.outputs.url }} --dest-creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}"
+      
+      - name: Install Juju
+        run: sudo snap install juju
+      
+      - name: Authenticate with JAAS
         env:
-          DEMOS_JUJU_CLIENT_ID: ${{ secrets.DEMOS_JUJU_CLIENT_ID }}
-          DEMOS_JUJU_CLIENT_SECRET: ${{ secrets.DEMOS_JUJU_CLIENT_SECRET }}
+          JUJU_CLIENT_ID: ${{ secrets.DEMOS_JUJU_CLIENT_ID }}
+          JUJU_CLIENT_SECRET: ${{ secrets.DEMOS_JUJU_CLIENT_SECRET }}
+        run: juju login jaas.ps7.canonical.com:443/k8s-jaas-ps7-jimm-jimm -c jaas-ps7
+      
+      - name: Deploy charm
+        run: |
+          CHARM_FILE=$(ls *.charm)
+          juju deploy "$CHARM_FILE" ${{ needs.setup.outputs.demo-id }} \
+            --resource flask-app-image=${{ steps.image-url.outputs.url }} \
+            -m 795798e4-922f-49c7-9169-004ffc17df90@serviceaccount/k8s-webteam-demos-default
+      
+      - name: Post demo comment
+        uses: ./.github/actions/demo-comment
+        with:
+          demo-id: ${{ needs.setup.outputs.demo-id }}
+
+  cleanup:
+    name: Cleanup Demo
+    needs: setup
+    if: needs.setup.outputs.should-cleanup == 'true'
+    runs-on: ubuntu-latest
+    env:
+      DEMOS_JUJU_CLIENT_ID: ${{ secrets.DEMOS_JUJU_CLIENT_ID }}
+      DEMOS_JUJU_CLIENT_SECRET: ${{ secrets.DEMOS_JUJU_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/cleanup-demo
+        with:
+          demo-id: ${{ needs.setup.outputs.demo-id }}
