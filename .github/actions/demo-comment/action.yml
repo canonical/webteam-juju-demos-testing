@@ -27,11 +27,7 @@ runs:
           }
           // TODO: the URL needs to be updated to point at the real demo service.
           const output = `<!-- demo_service -->
-          ### [<img src='https://assets.ubuntu.com/v1/6baef514-ubuntu-circle-of-friends-large.svg' height=32 width=32> Demo</img>](https://${{ process.env.DEMO_ID }}.example.com)
-
-          Status: enabled
-
-          This demo can be disabled be leaving a comment on this PR with the command \`/stop-demo\` and re-enabled with \`/start-demo\``;
+          ### [<img src='https://assets.ubuntu.com/v1/6baef514-ubuntu-circle-of-friends-large.svg' height=32 width=32> Demo</img>](https://${{ process.env.DEMO_ID }}.example.com)`;
           github.rest.issues.createComment({
             issue_number: context.issue.number,
             owner: context.repo.owner,
