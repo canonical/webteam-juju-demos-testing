@@ -1,0 +1,23 @@
+name: Demo Cleanup
+on:
+  pull_request:
+    types:
+      - closed
+permissions:
+  pull-requests: write
+  packages: write
+
+jobs:
+  cleanup:
+    name: Cleanup Demo
+    runs-on: ubuntu-latest
+    env:
+      DEMOS_JUJU_CLIENT_ID: ${{ secrets.DEMOS_JUJU_CLIENT_ID }}
+      DEMOS_JUJU_CLIENT_SECRET: ${{ secrets.DEMOS_JUJU_CLIENT_SECRET }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.DEMOS_S3_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.DEMOS_S3_SECRET_ACCESS_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/cleanup-demo
+        with:
+          demo-id: ${{ github.event.repository.name }}-pr${{ github.event.pull_request.number }}

@@ -9,7 +9,70 @@ runs:
   using: composite
   steps:
     - uses: hashicorp/setup-terraform@v3
-    - name: TODO actually do the cleanup
+
+    - name: Write Terraform base config
       shell: bash
       run: |
-        echo "Remove the demo with id '${{ inputs.demo-id }}' from the plan"
+        cat > terraform/demo/_base.tf << 'EOF'
+        terraform {
+          required_providers {
+            juju = {
+              source  = "juju/juju"
+              version = "~> 1.1.0"
+            }
+          }
+          backend "s3" {
+            bucket = "webteam-demos-ps7-tfstate"
+            region = "prodstack7"
+            endpoints = {
+              s3 = "https://radosgw.ps7.canonical.com"
+            }
+            skip_region_validation      = true
+            skip_credentials_validation = true
+            skip_requesting_account_id  = true
+            skip_s3_checksum            = true
+            use_path_style              = true
+            use_lockfile                = true
+          }
+        }
+
+        # Credentials via JUJU_CLIENT_ID and JUJU_CLIENT_SECRET environment variables.
+        provider "juju" {
+          controller_addresses = "jaas.ps7.canonical.com:443/k8s-jaas-ps7-jimm-jimm"
+        }
+
+        data "juju_model" "demos" {
+          owner = "795798e4-922f-49c7-9169-004ffc17df90@serviceaccount"
+          name  = "k8s-webteam-demos-default"
+        }
+
+        variable "demo_id" {
+          description = "Unique identifier for this demo (e.g. my-repo-pr42)."
+          type        = string
+        }
+        EOF
+
+    - name: Terraform init
+      shell: bash
+      run: terraform -chdir=terraform/demo init -backend-config="key=demos/${{ inputs.demo-id }}/state"
+
+    - name: Terraform destroy
+      shell: bash
+      env:
+        TF_VAR_demo_id: ${{ inputs.demo-id }}
+      run: terraform -chdir=terraform/demo destroy -auto-approve
+
+    - name: Delete Terraform state from S3
+      shell: bash
+      run: |
+        aws s3 rm s3://webteam-demos-ps7-tfstate/demos/${{ inputs.demo-id }}/state \
+          --endpoint-url https://radosgw.ps7.canonical.com \
+          --region prodstack7
+
+    - name: Delete GHCR image
+      shell: bash
+      continue-on-error: true
+      run: |
+        IMAGE_NAME="${{ github.repository }}:${{ inputs.demo-id }}"
+        IMAGE_NAME_LOWER=$(echo "$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')
+        gh api --method DELETE "/orgs/${{ github.repository_owner }}/packages/container/$(basename $IMAGE_NAME_LOWER)/versions" || true
