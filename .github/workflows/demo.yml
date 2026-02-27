@@ -109,7 +109,7 @@ jobs:
   deploy:
     name: Deploy to Juju
     needs: [setup, build-rock, build-charm]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, self-hosted-linux-amd64-noble-private-endpoint-medium]
     env:
       DEMOS_JUJU_CLIENT_ID: ${{ secrets.DEMOS_JUJU_CLIENT_ID }}
       DEMOS_JUJU_CLIENT_SECRET: ${{ secrets.DEMOS_JUJU_CLIENT_SECRET }}
