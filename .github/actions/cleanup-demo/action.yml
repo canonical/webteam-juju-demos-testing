@@ -67,7 +67,7 @@ runs:
       run: |
         aws s3 rm s3://webteam-demos-ps7-tfstate/demos/${{ inputs.demo-id }}/state \
           --endpoint-url https://radosgw.ps7.canonical.com \
-          --region prodstack7
+          --region us-east-1
 
     - name: Delete GHCR image
       shell: bash
