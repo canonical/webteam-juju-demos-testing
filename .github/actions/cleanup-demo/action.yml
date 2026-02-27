@@ -80,6 +80,11 @@ runs:
         GH_TOKEN: ${{ github.token }}
       continue-on-error: true
       run: |
-        IMAGE_NAME="${{ github.repository }}:${{ inputs.demo-id }}"
-        IMAGE_NAME_LOWER=$(echo "$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')
-        gh api --method DELETE "/orgs/${{ github.repository_owner }}/packages/container/$(basename $IMAGE_NAME_LOWER)/versions" || true
+        REPO_LOWER=$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')
+        PACKAGE_NAME="$REPO_LOWER"
+        TAG="${{ inputs.demo-id }}"
+        VERSION_ID=$(gh api "/orgs/${{ github.repository_owner }}/packages/container/${PACKAGE_NAME}/versions" --paginate \
+          --jq ".[] | select(.metadata.container.tags[] == \"$TAG\") | .id" 2>/dev/null | head -1)
+        if [ -n "$VERSION_ID" ]; then
+          gh api --method DELETE "/orgs/${{ github.repository_owner }}/packages/container/${PACKAGE_NAME}/versions/${VERSION_ID}"
+        fi
