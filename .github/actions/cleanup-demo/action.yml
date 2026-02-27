@@ -62,6 +62,11 @@ runs:
         TF_VAR_demo_id: ${{ inputs.demo-id }}
       run: terraform -chdir=terraform/demo destroy -auto-approve
 
+    - name: Install AWS cli
+      shell: bash
+      run: |
+        sudo snap install aws-cli --classic
+
     - name: Delete Terraform state from S3
       shell: bash
       run: |
