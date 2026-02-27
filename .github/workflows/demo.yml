@@ -135,10 +135,14 @@ jobs:
       - name: Login to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
       
+      - name: Setup skopeo
+        run: |
+          sudo snap install rockcraft --classic
+
       - name: Push rock to GHCR
         run: |
           ROCK_FILE=$(ls *.rock)
-          skopeo --insecure-policy copy oci-archive:$ROCK_FILE docker://${{ steps.image-url.outputs.url }} --dest-creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}"
+          rockcraft.skopeo --insecure-policy copy oci-archive:$ROCK_FILE docker://${{ steps.image-url.outputs.url }} --dest-creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}"
       
       - name: Install Juju
         run: sudo snap install juju
