@@ -76,6 +76,8 @@ runs:
 
     - name: Delete GHCR image
       shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
       continue-on-error: true
       run: |
         IMAGE_NAME="${{ github.repository }}:${{ inputs.demo-id }}"
