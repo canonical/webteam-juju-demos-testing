@@ -223,6 +223,8 @@ jobs:
       - name: Run Juju imports
         if: hashFiles('terraform/demo/juju_imports.sh') != ''
         env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.DEMOS_S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.DEMOS_S3_SECRET_ACCESS_KEY }}
           JUJU_CLIENT_ID: ${{ secrets.DEMOS_JUJU_CLIENT_ID }}
           JUJU_CLIENT_SECRET: ${{ secrets.DEMOS_JUJU_CLIENT_SECRET }}
           TF_VAR_demo_id: ${{ needs.setup.outputs.demo-id }}
