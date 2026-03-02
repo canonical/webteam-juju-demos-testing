@@ -62,17 +62,29 @@ runs:
         TF_VAR_demo_id: ${{ inputs.demo-id }}
       run: terraform -chdir=terraform/demo destroy -auto-approve
 
+    - name: Install AWS cli
+      shell: bash
+      run: |
+        sudo snap install aws-cli --classic
+
     - name: Delete Terraform state from S3
       shell: bash
       run: |
         aws s3 rm s3://webteam-demos-ps7-tfstate/demos/${{ inputs.demo-id }}/state \
           --endpoint-url https://radosgw.ps7.canonical.com \
-          --region prodstack7
+          --region us-east-1
 
     - name: Delete GHCR image
       shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
       continue-on-error: true
       run: |
-        IMAGE_NAME="${{ github.repository }}:${{ inputs.demo-id }}"
-        IMAGE_NAME_LOWER=$(echo "$IMAGE_NAME" | tr '[:upper:]' '[:lower:]')
-        gh api --method DELETE "/orgs/${{ github.repository_owner }}/packages/container/$(basename $IMAGE_NAME_LOWER)/versions" || true
+        REPO_LOWER=$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')
+        PACKAGE_NAME="$REPO_LOWER"
+        TAG="${{ inputs.demo-id }}"
+        VERSION_ID=$(gh api "/orgs/${{ github.repository_owner }}/packages/container/${PACKAGE_NAME}/versions" --paginate \
+          --jq ".[] | select(.metadata.container.tags[] == \"$TAG\") | .id" 2>/dev/null | head -1)
+        if [ -n "$VERSION_ID" ]; then
+          gh api --method DELETE "/orgs/${{ github.repository_owner }}/packages/container/${PACKAGE_NAME}/versions/${VERSION_ID}"
+        fi

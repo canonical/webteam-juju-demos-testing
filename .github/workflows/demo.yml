@@ -109,7 +109,7 @@ jobs:
   deploy:
     name: Deploy to Juju
     needs: [setup, build-rock, build-charm]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, self-hosted-linux-amd64-noble-private-endpoint-medium]
     env:
       DEMOS_JUJU_CLIENT_ID: ${{ secrets.DEMOS_JUJU_CLIENT_ID }}
       DEMOS_JUJU_CLIENT_SECRET: ${{ secrets.DEMOS_JUJU_CLIENT_SECRET }}
@@ -135,10 +135,14 @@ jobs:
       - name: Login to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
       
+      - name: Setup skopeo
+        run: |
+          sudo snap install rockcraft --classic
+
       - name: Push rock to GHCR
         run: |
           ROCK_FILE=$(ls *.rock)
-          skopeo --insecure-policy copy oci-archive:$ROCK_FILE docker://${{ steps.image-url.outputs.url }} --dest-creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}"
+          rockcraft.skopeo --insecure-policy copy oci-archive:$ROCK_FILE docker://${{ steps.image-url.outputs.url }} --dest-creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}"
       
       - name: Install Juju
         run: sudo snap install juju
@@ -219,6 +223,8 @@ jobs:
       - name: Run Juju imports
         if: hashFiles('terraform/demo/juju_imports.sh') != ''
         env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.DEMOS_S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.DEMOS_S3_SECRET_ACCESS_KEY }}
           JUJU_CLIENT_ID: ${{ secrets.DEMOS_JUJU_CLIENT_ID }}
           JUJU_CLIENT_SECRET: ${{ secrets.DEMOS_JUJU_CLIENT_SECRET }}
           TF_VAR_demo_id: ${{ needs.setup.outputs.demo-id }}
