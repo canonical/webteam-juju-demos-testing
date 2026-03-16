@@ -37,10 +37,10 @@ runs:
 
           let body;
           if (status === 'pending') {
-            body = `<!-- demo_service -->\n### <img src='https://assets.ubuntu.com/v1/6baef514-ubuntu-circle-of-friends-large.svg' height=32 width=32> Demo\n⏳ Deployment in progress… [View workflow run](${runUrl})`;
+            body = `<!-- demo_service -->\n### <img src='https://assets.ubuntu.com/v1/6baef514-ubuntu-circle-of-friends-large.svg' height=16 width=16> Demo\n⏳ Deployment in progress… [View workflow run](${runUrl})`;
           } else {
             // TODO: the URL needs to be updated to point at the real demo service.
-            body = `<!-- demo_service -->\n### [<img src='https://assets.ubuntu.com/v1/6baef514-ubuntu-circle-of-friends-large.svg' height=32 width=32> Demo](https://${demoId}.example.com)\n✅ Demo deployed: https://${demoId}.example.com`;
+            body = `<!-- demo_service -->\n### [<img src='https://assets.ubuntu.com/v1/6baef514-ubuntu-circle-of-friends-large.svg' height=16 width=16> Demo](https://${demoId}.demos.canonical.com)\n✅ Demo deployed: https://${demoId}.demos.canonical.com`;
           }
 
           if (existingComment) {
