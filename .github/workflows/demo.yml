@@ -15,130 +15,68 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  setup:
-    name: Setup Demo
-    runs-on: ubuntu-latest
-    outputs:
-      demo-id: ${{ steps.demo-id.outputs.id }}
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Get demo ID
-        id: demo-id
-        run: |
-          echo "id=${{ github.event.repository.name }}-pr${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
-
-  comment-pending:
-    name: Comment (Pending)
-    needs: setup
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Post pending comment
-        uses: ./.github/actions/demo-comment
-        with:
-          demo-id: ${{ needs.setup.outputs.demo-id }}
-          status: pending
-          run-id: ${{ github.run_id }}
-
-  build-rock:
-    name: Build Rock
-    needs: setup
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Setup LXD
-        uses: canonical/setup-lxd@main
-      
-      - name: Setup rockcraft
-        run: sudo snap install rockcraft --classic
-      
-      - name: Cache rock
-        id: cache-rock
-        uses: actions/cache@v4
-        with:
-          path: "*.rock"
-          key: rock-${{ hashFiles('rockcraft.yaml', 'app.py', 'requirements.txt') }}
-      
-      - name: Pack rock
-        if: steps.cache-rock.outputs.cache-hit != 'true'
-        run: rockcraft pack
-      
-      - name: Upload rock artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: rock-${{ needs.setup.outputs.demo-id }}
-          path: "*.rock"
-          retention-days: 1
-
-  build-charm:
-    name: Build Charm
-    needs: setup
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Setup LXD
-        uses: canonical/setup-lxd@main
-      
-      - name: Setup charmcraft
-        run: sudo snap install charmcraft --classic --channel=latest/stable
-      
-      - name: Cache charm
-        id: cache-charm
-        uses: actions/cache@v4
-        with:
-          path: "charm/*.charm"
-          key: charm-${{ hashFiles('charm/**') }}
-      
-      - name: Pack charm
-        if: steps.cache-charm.outputs.cache-hit != 'true'
-        run: |
-          cd charm
-          charmcraft pack -v
-      
-      - name: Upload charm artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: charm-${{ needs.setup.outputs.demo-id }}
-          path: "charm/*.charm"
-          retention-days: 1
-
-  deploy:
-    name: Deploy to Juju
-    needs: [setup, build-rock, build-charm]
+  demo:
+    name: Demo
     runs-on: [self-hosted, self-hosted-linux-amd64-noble-private-endpoint-medium]
     env:
       DEMOS_JUJU_CLIENT_ID: ${{ secrets.DEMOS_JUJU_CLIENT_ID }}
       DEMOS_JUJU_CLIENT_SECRET: ${{ secrets.DEMOS_JUJU_CLIENT_SECRET }}
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Download rock
-        uses: actions/download-artifact@v6
+
+      - name: Get demo ID
+        id: demo-id
+        run: echo "id=${{ github.event.repository.name }}-pr${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+
+      - name: Post pending comment
+        uses: ./.github/actions/demo-comment
         with:
-          name: rock-${{ needs.setup.outputs.demo-id }}
-      
-      - name: Download charm
-        uses: actions/download-artifact@v6
+          demo-id: ${{ steps.demo-id.outputs.id }}
+          status: pending
+          run-id: ${{ github.run_id }}
+
+      - name: Setup LXD
+        uses: canonical/setup-lxd@main
+
+      - name: Setup rockcraft
+        run: sudo snap install rockcraft --classic
+
+      - name: Setup charmcraft
+        run: sudo snap install charmcraft --classic --channel=latest/stable
+
+      - name: Cache rock
+        id: cache-rock
+        uses: actions/cache@v4
         with:
-          name: charm-${{ needs.setup.outputs.demo-id }}
+          path: "*.rock"
+          key: rock-${{ hashFiles('rockcraft.yaml', 'app.py', 'requirements.txt') }}
+
+      - name: Pack rock
+        if: steps.cache-rock.outputs.cache-hit != 'true'
+        run: rockcraft pack
+
+      - name: Cache charm
+        id: cache-charm
+        uses: actions/cache@v4
+        with:
+          path: "charm/*.charm"
+          key: charm-${{ hashFiles('charm/**') }}
+
+      - name: Pack charm
+        if: steps.cache-charm.outputs.cache-hit != 'true'
+        run: |
+          cd charm
+          charmcraft pack -v
       
       - name: Set image URL
         id: image-url
         run: |
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          echo "url=ghcr.io/${REPO_LOWER}:${{ needs.setup.outputs.demo-id }}" >> $GITHUB_OUTPUT
+          echo "url=ghcr.io/${REPO_LOWER}:${{ steps.demo-id.outputs.id }}" >> "$GITHUB_OUTPUT"
       
       - name: Login to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
       
-      - name: Setup skopeo
-        run: |
-          sudo snap install rockcraft --classic
-
       - name: Push rock to GHCR
         run: |
           ROCK_FILE=$(ls *.rock)
@@ -158,15 +96,15 @@ jobs:
           JUJU_CLIENT_ID: ${{ secrets.DEMOS_JUJU_CLIENT_ID }}
           JUJU_CLIENT_SECRET: ${{ secrets.DEMOS_JUJU_CLIENT_SECRET }}
         run: |
-          CHARM_FILE=$(ls *.charm)
+          CHARM_FILE=$(ls charm/*.charm)
           MODEL="795798e4-922f-49c7-9169-004ffc17df90@serviceaccount/k8s-webteam-demos-default"
-          if juju show-application ${{ needs.setup.outputs.demo-id }} -m "$MODEL" &>/dev/null; then
-            juju refresh --debug ${{ needs.setup.outputs.demo-id }} \
+          if juju show-application ${{ steps.demo-id.outputs.id }} -m "$MODEL" &>/dev/null; then
+            juju refresh --debug ${{ steps.demo-id.outputs.id }} \
               --path="./$CHARM_FILE" \
               --resource flask-app-image=${{ steps.image-url.outputs.url }} \
               -m "$MODEL"
           else
-            juju deploy --debug "./$CHARM_FILE" ${{ needs.setup.outputs.demo-id }} \
+            juju deploy --debug "./$CHARM_FILE" ${{ steps.demo-id.outputs.id }} \
               --resource flask-app-image=${{ steps.image-url.outputs.url }} \
               -m "$MODEL"
           fi
@@ -218,7 +156,7 @@ jobs:
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.DEMOS_S3_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.DEMOS_S3_SECRET_ACCESS_KEY }}
-        run: terraform -chdir=terraform/demo init -backend-config="key=demos/${{ needs.setup.outputs.demo-id }}/state"
+        run: terraform -chdir=terraform/demo init -backend-config="key=demos/${{ steps.demo-id.outputs.id }}/state"
 
       - name: Run Juju imports
         if: hashFiles('terraform/demo/juju_imports.sh') != ''
@@ -227,8 +165,8 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.DEMOS_S3_SECRET_ACCESS_KEY }}
           JUJU_CLIENT_ID: ${{ secrets.DEMOS_JUJU_CLIENT_ID }}
           JUJU_CLIENT_SECRET: ${{ secrets.DEMOS_JUJU_CLIENT_SECRET }}
-          TF_VAR_demo_id: ${{ needs.setup.outputs.demo-id }}
-          DEMO_ID: ${{ needs.setup.outputs.demo-id }}
+          TF_VAR_demo_id: ${{ steps.demo-id.outputs.id }}
+          DEMO_ID: ${{ steps.demo-id.outputs.id }}
           MODEL_UUID: "40cad239-1fe9-497f-89a2-ce70ab3e33af"
         run: bash terraform/demo/juju_imports.sh
 
@@ -238,11 +176,11 @@ jobs:
           JUJU_CLIENT_SECRET: ${{ secrets.DEMOS_JUJU_CLIENT_SECRET }}
           AWS_ACCESS_KEY_ID: ${{ secrets.DEMOS_S3_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.DEMOS_S3_SECRET_ACCESS_KEY }}
-          TF_VAR_demo_id: ${{ needs.setup.outputs.demo-id }}
+          TF_VAR_demo_id: ${{ steps.demo-id.outputs.id }}
         run: terraform -chdir=terraform/demo apply -auto-approve
       
       - name: Post demo comment
         uses: ./.github/actions/demo-comment
         with:
-          demo-id: ${{ needs.setup.outputs.demo-id }}
+          demo-id: ${{ steps.demo-id.outputs.id }}
           status: deployed
