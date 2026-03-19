@@ -8,8 +8,8 @@ This repository uses a **simple demo deployment system** for PR testing via Juju
 
 The demo system has three layers:
 
-1. **Main Workflow** ([demo.yml](.github/workflows/demo.yml)): Orchestrates the entire pipeline
-2. **Composite Actions** ([.github/actions/](.github/actions/)): Reusable building blocks for specific tasks
+1. **Main Workflows** ([demo.yml](.github/workflows/demo.yml), [demo-cleanup.yml](.github/workflows/demo-cleanup.yml)): PR-triggered wrappers
+2. **Reusable Workflows** ([reusable-demo.yml](.github/workflows/reusable-demo.yml), [reusable-demo-cleanup.yml](.github/workflows/reusable-demo-cleanup.yml)): Shareable deployment/cleanup pipelines triggered via `uses:`
 3. **External Services**: JAAS (Juju), GHCR (container registry), K8s cluster
 4. **Terraform** ([terraform/demo/](terraform/demo/)): Project-defined demo topology (apps, relations, config)
 
@@ -17,17 +17,7 @@ The demo system has three layers:
 
 ### Key Workflows & Actions
 
-#### [demo.yml](.github/workflows/demo.yml) - Main Entry Point
-- **Trigger**: PR open/reopen/synchronize (deploy) + PR closed (cleanup via `demo-cleanup.yml`)
-- **Concurrency**: Single demo per ref (cancels in-progress runs)
-- **Jobs**:
-  - `setup`: Generates unique `demo-id` (format: `{repo-name}-pr{number}`)
-  - `build-rock`: Caches based on `rockcraft.yaml`, `app.py`, `requirements.txt` hash
-  - `build-charm`: Caches based on `charm/**` directory hash
-  - `deploy`: Pushes rock to GHCR, deploys charm via Juju CLI, writes `terraform/demo/_base.tf`, runs `terraform/demo/juju_imports.sh`, applies Terraform. Uploads state as `tfstate-{demo-id}` artifact (90-day retention).
-  - `cleanup` (in `demo-cleanup.yml`): Downloads Terraform state artifact, writes `_base.tf`, runs `terraform destroy`, deletes GHCR image.
-
-#### [deploy-demo action](.github/actions/deploy-demo/action.yml) - Core Deployment
+#### [reusable-demo.yml](.github/workflows/reusable-demo.yml) - Core Deployment
 Handles rock→OCI, charm→K8s with Juju CLI, then Terraform for relation management. Key steps:
 - **Caching**: Separate caches for rock and charm to speed rebuilds
 - **Image Push**: Uses `skopeo` with GHCR credentials
@@ -40,12 +30,12 @@ Handles rock→OCI, charm→K8s with Juju CLI, then Terraform for relation manag
 #### [demo-comment action](.github/actions/demo-comment/action.yml) - User Interface
 Posts a single bot comment with demo link (marked with `<!-- demo_service -->` to avoid duplicates).
 
-#### [cleanup-demo action](.github/actions/cleanup-demo/action.yml) - Teardown
+#### [reusable-demo-cleanup.yml](.github/workflows/reusable-demo-cleanup.yml) - Teardown
 Downloads the Terraform state artifact, writes `_base.tf`, runs `terraform destroy` (removes all resources in the state), then deletes the GHCR image.
 
 ### Project-Defined Demo Topology ([terraform/demo/](terraform/demo/))
 
-Each project owns its demo infrastructure in `terraform/demo/`. The action generates `terraform/demo/_base.tf` at runtime (never committed); projects provide:
+Each project owns its demo infrastructure in `terraform/demo/`. The reusable workflow generates `terraform/demo/_base.tf` at runtime (never committed); projects provide:
 
 - **`terraform/demo/demo.tf`** (required): Terraform resources for the demo — applications, integrations, config. Can reference:
   - `var.demo_id` — unique demo ID (e.g. `my-repo-pr42`)
@@ -66,7 +56,7 @@ Use `"${var.demo_id}-db"` in `demo.tf` and `"${DEMO_ID}-db"` in `juju_imports.sh
 `terraform/demo/_base.tf` is written at runtime and must be in `.gitignore`. It contains:
 - Juju provider (`juju/juju ~> 1.1.0`, controller: `jaas.ps7.canonical.com:443/k8s-jaas-ps7-jimm-jimm`)
 - Model data source: owner `795798e4-922f-49c7-9169-004ffc17df90@serviceaccount`, name `k8s-webteam-demos-default`
-- `variable "demo_id"` — set via `TF_VAR_demo_id` by the action
+- `variable "demo_id"` — set via `TF_VAR_demo_id` by the workflow
 - **Provider auth**: `JUJU_CLIENT_ID` and `JUJU_CLIENT_SECRET` env vars (from `DEMOS_JUJU_CLIENT_ID`/`DEMOS_JUJU_CLIENT_SECRET` secrets)
 - **Model UUID** (for imports): `40cad239-1fe9-497f-89a2-ce70ab3e33af`
 
@@ -79,19 +69,19 @@ Use `"${var.demo_id}-db"` in `demo.tf` and `"${DEMO_ID}-db"` in `juju_imports.sh
    - Charm cache key: hash of entire `charm/` directory
    - Cache misses trigger rebuilds; ensure only these files change the cache key
 4. **Secrets**: `DEMOS_JUJU_CLIENT_ID` and `DEMOS_JUJU_CLIENT_SECRET` needed for both Juju CLI and Terraform provider. `GITHUB_TOKEN` (automatic) for GHCR login and API calls.
-5. **Juju Model**: `795798e4-922f-49c7-9169-004ffc17df90@serviceaccount/k8s-webteam-demos-default` (model UUID: `40cad239-1fe9-497f-89a2-ce70ab3e33af`) - changes require Juju infrastructure coordination and updates to the action's `_base.tf` template.
+5. **Juju Model**: `795798e4-922f-49c7-9169-004ffc17df90@serviceaccount/k8s-webteam-demos-default` (model UUID: `40cad239-1fe9-497f-89a2-ce70ab3e33af`) - changes require Juju infrastructure coordination and updates to reusable workflow inputs/defaults.
 
 ### Common Modifications
 
-**Adding a build step**: Modify `deploy-demo` action's `runs.steps` and `demo.yml` `build-*` jobs together.
+**Adding a build step**: Modify `reusable-demo.yml` directly (the wrapper workflows call it via `uses:`).
 
-**Changing cache keys**: Update hash inputs in `cache` steps - mismatches between `demo.yml` and `deploy-demo` action will cause inconsistent caching.
+**Changing cache keys**: Update hash inputs in `reusable-demo.yml` so all callers stay consistent.
 
 **Adding inputs**: Actions expose `charm-root` and `charm-path` for flexibility. Remember to propagate inputs through all calling actions if changing.
 
 **Adding a new Juju relation or app**: Add resources to `terraform/demo/demo.tf` and import them in `terraform/demo/juju_imports.sh`. They will be created on `terraform apply` during deploy and removed on `terraform destroy` during cleanup.
 
-**Extending cleanup**: Add steps to `cleanup-demo` action (e.g., database cleanup) - runs on PR close for all closed demos.
+**Extending cleanup**: Add steps to `reusable-demo-cleanup.yml` (e.g., database cleanup) - runs on PR close for all closed demos.
 
 ### Debugging Tips
 
