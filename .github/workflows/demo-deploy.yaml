@@ -94,6 +94,7 @@ jobs:
         continue-on-error: true
         shell: bash
         env:
+          API_CONNECT_URL: https://ingress-ps7-webdesign.dynamic.admin.canonical.com
           API_URL: ${{ vars.DEMOS_API_URL }}
           COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
           DEMOS_HMAC_KEY: ${{ secrets.DEMOS_HMAC_KEY }}
@@ -104,6 +105,8 @@ jobs:
         run: |
           python3 .github/scripts/demo_api.py \
             --api-url "$API_URL" \
+            --connect-url "$API_CONNECT_URL" \
+            --insecure \
             --repository "$GITHUB_REPOSITORY" \
             --pr-number "$PR_NUMBER" \
             --timeout "$TIMEOUT_SECONDS" \
