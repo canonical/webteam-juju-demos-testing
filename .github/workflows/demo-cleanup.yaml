@@ -1,0 +1,20 @@
+name: Demo cleanup
+
+on:
+  pull_request:
+    types:
+      - closed
+
+permissions:
+  contents: read
+  packages: write
+  pull-requests: write
+
+jobs:
+  cleanup:
+    uses: canonical/demos-rework/.github/workflows/demo-cleanup.yaml@main
+    with:
+      pr-number: ${{ github.event.pull_request.number }}
+      api-url: ${{ vars.DEMOS_API_URL }}
+    secrets:
+      demos-hmac-key: ${{ secrets.DEMOS_HMAC_KEY }}

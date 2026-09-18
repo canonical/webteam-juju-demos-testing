@@ -1,0 +1,23 @@
+name: Demo deploy
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+
+permissions:
+  contents: read
+  packages: write
+  pull-requests: write
+
+jobs:
+  deploy:
+    uses: canonical/demos-rework/.github/workflows/demo-deploy.yaml@main
+    with:
+      pr-number: ${{ github.event.pull_request.number }}
+      commit-sha: ${{ github.event.pull_request.head.sha }}
+      api-url: ${{ vars.DEMOS_API_URL }}
+    secrets:
+      demos-hmac-key: ${{ secrets.DEMOS_HMAC_KEY }}
