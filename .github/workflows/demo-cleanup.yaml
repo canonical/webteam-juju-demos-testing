@@ -10,11 +10,119 @@ permissions:
   packages: write
   pull-requests: write
 
+concurrency:
+  group: demo-deploy-${{ github.repository }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   cleanup:
-    uses: canonical/demos-rework/.github/workflows/demo-cleanup.yaml@main
-    with:
-      pr-number: ${{ github.event.pull_request.number }}
-      api-url: ${{ vars.DEMOS_API_URL }}
-    secrets:
-      demos-hmac-key: ${{ secrets.DEMOS_HMAC_KEY }}
+    name: Destroy demo and clean image
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out trusted API client
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+
+      - name: Request destruction and wait for cleanup
+        id: destroy-api
+        continue-on-error: true
+        shell: bash
+        env:
+          API_URL: ${{ vars.DEMOS_API_URL }}
+          DEMOS_HMAC_KEY: ${{ secrets.DEMOS_HMAC_KEY }}
+          POLL_INTERVAL: 5
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          TIMEOUT_SECONDS: 600
+        run: |
+          python3 .github/scripts/demo_api.py \
+            --api-url "$API_URL" \
+            --repository "$GITHUB_REPOSITORY" \
+            --pr-number "$PR_NUMBER" \
+            --timeout "$TIMEOUT_SECONDS" \
+            --interval "$POLL_INTERVAL" \
+            destroy \
+            --delivery-id "${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-destroy"
+
+      - name: Delete single-tag GHCR package version
+        if: true
+        id: delete-image
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          package="${GITHUB_REPOSITORY#*/}"
+          encoded_package="$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$package")"
+          owner_type="$(gh api "/users/${owner}" --jq .type)"
+          if [ "$owner_type" = "Organization" ]; then
+            endpoint="/orgs/${owner}/packages/container/${encoded_package}/versions"
+          else
+            endpoint="/users/${owner}/packages/container/${encoded_package}/versions"
+          fi
+          prefix="pr-${PR_NUMBER}-sha-"
+          versions="$(
+            gh api --paginate "${endpoint}?per_page=100" --jq \
+              ".[] | select(.metadata.container.tags | length == 1) |
+              select(.metadata.container.tags[0] | startswith(\"${prefix}\")) | .id"
+          )"
+          if [ -z "$versions" ]; then
+            echo "::notice::No safely deletable single-tag GHCR versions found for ${prefix}*"
+            exit 0
+          fi
+          while read -r version; do
+            test -n "$version" && gh api --method DELETE "${endpoint}/${version}"
+          done <<< "$versions"
+
+      - name: Update persistent PR comment
+        if: ${{ always() }}
+        uses: actions/github-script@v7
+        env:
+          API_MESSAGE: ${{ steps.destroy-api.outputs.message }}
+          API_STATE: ${{ steps.destroy-api.outputs.state }}
+          DESTROY_OUTCOME: ${{ steps.destroy-api.outcome }}
+          IMAGE_OUTCOME: ${{ steps.delete-image.outcome }}
+          MARKER: <!-- demos-controller:${{ github.repository }}:${{ github.event.pull_request.number }} -->
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const marker = process.env.MARKER;
+            const destroyed = process.env.DESTROY_OUTCOME === "success";
+            const state = process.env.API_STATE || (destroyed ? "destroyed" : "cleanup failed");
+            const details = process.env.API_MESSAGE ||
+              (destroyed ? "The controller reports that demo resources were removed." :
+                "The controller did not confirm demo cleanup.");
+            const image = process.env.IMAGE_OUTCOME === "failure"
+              ? "\n\nGHCR cleanup was not permitted or the package version could not be removed."
+              : "";
+            const body = `${marker}\n## PR demo: ${state}\n\n${details}${image}` +
+              `\n\n[Workflow run](${context.serverUrl}/${context.repo.owner}/` +
+              `${context.repo.repo}/actions/runs/${context.runId})`;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              ...context.repo,
+              issue_number: Number("${{ github.event.pull_request.number }}"),
+              per_page: 100,
+            });
+            const existing = comments.find(comment => comment.body?.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                ...context.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: Number("${{ github.event.pull_request.number }}"),
+                body,
+              });
+            }
+
+      - name: Fail when controller cleanup did not complete
+        if: ${{ steps.destroy-api.outcome == 'failure' }}
+        shell: bash
+        run: exit 1
