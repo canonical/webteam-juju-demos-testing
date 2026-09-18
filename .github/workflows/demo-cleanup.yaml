@@ -22,7 +22,7 @@ jobs:
       - name: Check out trusted API client
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: refs/heads/main
           persist-credentials: false
 
       - name: Request destruction and wait for cleanup
