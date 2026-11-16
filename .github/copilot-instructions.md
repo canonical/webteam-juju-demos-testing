@@ -1,5 +1,15 @@
 # Copilot Instructions
 
+## Current controller integration
+
+The active preview workflows are `demo-deploy.yaml` and `demo-cleanup.yaml`.
+They delegate to `canonical/webteam-devops` reusable workflows on `main` and
+require the `DEMOS_API_URL` Actions variable plus the `DEMOS_API_TOKEN` Actions
+secret. Authentication is per-repository bearer authentication over verified
+HTTPS. Do not add a local signing client or disable TLS verification.
+
+The Juju/Terraform guidance below describes the legacy system only.
+
 ## GitHub Workflows: Demo Deployment Pipeline
 
 This repository uses a **simple demo deployment system** for PR testing via Juju K8s. A demo is **automatically deployed whenever a PR is opened, reopened, or updated**, and automatically cleaned up when the PR is closed.
