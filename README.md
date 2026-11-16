@@ -5,7 +5,7 @@ This repository tests pull-request previews managed by the demos controller.
 ## Current controller workflows
 
 `.github/workflows/demo-deploy.yaml` and `demo-cleanup.yaml` call the shared
-`canonical/webteam-devops` workflows at an audited, immutable commit. They build
+`canonical/webteam-devops` workflows on `main`. They build
 the exact PR commit, deploy an immutable image through the controller, and clean
 up after the pull request closes. Fork pull requests do not receive credentials.
 

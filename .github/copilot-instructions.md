@@ -3,7 +3,7 @@
 ## Current controller integration
 
 The active preview workflows are `demo-deploy.yaml` and `demo-cleanup.yaml`.
-They delegate to SHA-pinned `canonical/webteam-devops` reusable workflows and
+They delegate to `canonical/webteam-devops` reusable workflows on `main` and
 require the `DEMOS_API_URL` Actions variable plus the `DEMOS_API_TOKEN` Actions
 secret. Authentication is per-repository bearer authentication over verified
 HTTPS. Do not add a local signing client or disable TLS verification.
