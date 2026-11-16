@@ -13,7 +13,7 @@ permissions:
 jobs:
   cleanup:
     if: github.event.pull_request.head.repo.full_name == github.repository
-    uses: canonical/webteam-devops/.github/workflows/demo-cleanup.yaml@5827cdf23746726d4dea2a7e80f0e57aba239aeb
+    uses: canonical/webteam-devops/.github/workflows/demo-cleanup.yaml@main
     with:
       pr-number: ${{ github.event.pull_request.number }}
       api-url: ${{ vars.DEMOS_API_URL }}
