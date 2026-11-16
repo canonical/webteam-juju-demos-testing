@@ -1,8 +1,25 @@
 # Webteam demos testing
 
-This repository contains a simple charm and workflow to test that webteam demos can be deployed via Juju and Terraform.
+This repository tests pull-request previews managed by the demos controller.
 
-## How to adopt this in another project
+## Current controller workflows
+
+`.github/workflows/demo-deploy.yaml` and `demo-cleanup.yaml` call the shared
+`canonical/webteam-devops` workflows at an audited, immutable commit. They build
+the exact PR commit, deploy an immutable image through the controller, and clean
+up after the pull request closes. Fork pull requests do not receive credentials.
+
+Configure `DEMOS_API_URL` as a repository or organisation Actions variable and
+`DEMOS_API_TOKEN` as a repository Actions secret. Its token must match this
+repository's entry in the controller's Juju `api-tokens-secret`. Never print or
+commit token values. Requests use bearer authentication over verified HTTPS;
+there is no local signing client or insecure ingress override.
+
+## Legacy Juju/Terraform adoption guide
+
+The following describes the earlier system, not the current controller workflows.
+
+### How to adopt the legacy system in another project
 
 The demo deployment system automatically deploys a PR preview whenever a PR is opened/updated, and cleans it up when the PR is closed. To adopt it in another project:
 
